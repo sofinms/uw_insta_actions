@@ -1,39 +1,30 @@
-autoloading:
-  db: true
-  rmq: false
-  rds: false
 web_browser:
   browser: 'chrome'
   headless: false
-  use_profile_directory: false
+  use_profile_directory: true
   use_proxy: false
-  path_to_profile_dir: '/Users/macbook/Library/Application Support/Google/Chrome/parser2/'
+  path_to_profile_dir: '/Users/macbook/Library/Application Support/Google/Chrome/parser1'
   proxy_host: '127.0.0.1'
   proxy_port: '8080'
   window_width: 1920
   window_height: 1080
-db:
-  host: '127.0.0.1'
-  port: '3306'
-  name: 'database-name'
-  user: 'username'
-  password: 'password'
-rmq:
-  host: '127.0.0.1'
-  port: 5672
-  vhost: /begin_parser
-  username: begin_parser
-  password: 'password'
-insta:
+
+login_data:
   login: 'instalogin'
-  password: 'instapasswd'
+  password: 'instapasswrd'
+
+comment_text_parts:
+    - "Au top,"
+    - " ton contenu| continue "
+    - "lourd |c'est fort"
+
+count_last_posts_process: 20
+sleeping_minutes: 8
+
 actions:
-  stories:
-    - 'instagram'
-    - 'milliebobbybrown'
-    - 'selenagomez'
-    - 'zendaya'
   like_comment:
-    - 'therealstanlee'
-  direct:
-    - 'billieeilish'
+    hashtags:
+      - 'florencebymills'
+    nicknames:
+      - 'selenagomez'
+      - 'zendaya'
