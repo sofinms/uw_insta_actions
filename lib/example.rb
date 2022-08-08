@@ -57,6 +57,7 @@ module Parser
       @driver.navigate.to "https://www.instagram.com/#{O14::Config.get_config.login_data['login']}/followers/"
       sleep 5
       followers = @driver.find_elements(css: "div[role='dialog'] span>a[role='link']").map { |f| f['href'] }
+      followers = followers.sample(3)
       followers.each do |follower|
         @driver.navigate.to follower
         sleep 5
