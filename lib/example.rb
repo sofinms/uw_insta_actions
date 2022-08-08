@@ -21,12 +21,25 @@ module Parser
 
       @accs_for_view_stories = []
 
-      # actions_by_hashtag
-      # actions_by_account_list
+      actions_by_hashtag
+      actions_by_account_list
       actions_by_followers
+      answer_unread_messages
 
-      sleep 60
       O14::WebBrowser.quit_browser
+    end
+
+    def self.answer_unread_messages
+      O14::ProjectLogger.get_logger.debug 'start auto reply direct messages'
+      @driver.navigate.to 'https://www.instagram.com/direct/inbox/'
+      sleep 4
+
+      unread_messages = @driver.find_elements(css: "div[aria-label='Unread']") rescue []
+      unread_messages.each do |msg|
+        msg.click
+        sleep 3
+        send_direct_message
+      end
     end
 
     def self.actions_by_hashtag
@@ -210,7 +223,19 @@ module Parser
       end
     end
 
-    def self.send_direct_message nickname
+    def self.send_direct_message
+      begin
+        message_area = @driver.find_element(css: 'textarea[placeholder=\'Message...\']')
+        message_area.click
+        message_area.send_keys get_comment_message, :return
+        sleep 3
+      rescue => e
+        O14::ProjectLogger.get_logger.error 'Error when message in direct trying to send'
+        O14::ProjectLogger.get_logger.error e
+      end
+    end
+
+    def self.find_and_send_direct_message nickname
       @driver.navigate.to 'https://www.instagram.com/direct/inbox/'
       sleep 4
       dialog_process
