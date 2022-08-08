@@ -24,3 +24,16 @@ rmq:
   vhost: /begin_parser
   username: begin_parser
   password: 'password'
+insta:
+  login: 'instalogin'
+  password: 'instapasswd'
+actions:
+  stories:
+    - 'instagram'
+    - 'milliebobbybrown'
+    - 'selenagomez'
+    - 'zendaya'
+  like_comment:
+    - 'therealstanlee'
+  direct:
+    - 'billieeilish'

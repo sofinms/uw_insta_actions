@@ -9,11 +9,11 @@ module Parser
 
       login if need_login?
 
-      settings = O14::Config.get_config.settings_data
+      actions = O14::Config.get_config.actions
 
-      settings['stories'].each { |nickname| view_stories nickname }
-      settings['direct'].each { |nickname| send_direct_message nickname }
-      settings['like_comment'].each { |nickname| like_comment nickname }
+      actions['stories'].each { |nickname| view_stories nickname }
+      actions['direct'].each { |nickname| send_direct_message nickname }
+      actions['like_comment'].each { |nickname| like_comment nickname }
 
       sleep 60
     end
