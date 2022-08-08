@@ -56,7 +56,19 @@ module Parser
     def self.actions_by_followers
       @driver.navigate.to "https://www.instagram.com/#{O14::Config.get_config.login_data['login']}/followers/"
       sleep 5
+
+      scroll_count = 0
+      while scroll_count < 4
+        followers_wrapper = @driver.find_element(css: 'div._aano')
+        scroll_origin = Selenium::WebDriver::WheelActions::ScrollOrigin.element(followers_wrapper)
+        @driver.action.scroll_from(scroll_origin, 0, 400).perform
+        scroll_count += 1
+        sleep 2
+      end
+
       followers = @driver.find_elements(css: "div[role='dialog'] span>a[role='link']").map { |f| f['href'] }
+      O14::ProjectLogger.get_logger.debug "Found #{followers.count} followers. Get 3 random"
+
       followers = followers.sample(3)
       followers.each do |follower|
         @driver.navigate.to follower
