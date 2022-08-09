@@ -26,8 +26,47 @@ module Parser
       actions_by_followers
       answer_unread_messages
       answer_requests
+      account_linking
 
       O14::WebBrowser.quit_browser
+    end
+
+    def self.account_linking
+      O14::ProjectLogger.get_logger.debug 'start actions process for account from first post description'
+      O14::Config.get_config.actions['account_linking'].each do |nickname|
+        O14::ProjectLogger.get_logger.debug "Account from which the link will be searched: @#{nickname}"
+        @driver.navigate.to "https://www.instagram.com/#{nickname}/"
+        sleep 5
+        found_link = get_link_from_first_posts
+        O14::ProjectLogger.get_logger.debug "Found link: #{found_link}"
+
+        @driver.navigate.to found_link
+        sleep 5
+
+        view_current_stories
+        set_likes_comments
+      end
+    end
+
+    def self.get_link_from_first_posts
+      posts = @driver.find_elements(css: 'main article div._aabd') rescue []
+      O14::ProjectLogger.get_logger.debug "Posts found: #{posts.count}"
+      link_account = nil
+
+      posts.first(5).each do |post|
+        post.click
+        sleep 4
+        O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
+
+        link_account = @driver.find_element(xpath: "//li[@role='menuitem']//a[contains(text(), '@')]")['href'] rescue nil
+        O14::ProjectLogger.get_logger.debug "link_account: #{link_account}"
+        break unless link_account.nil?
+
+        @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
+        sleep 3
+      end
+
+      link_account
     end
 
     def self.answer_requests
@@ -78,7 +117,7 @@ module Parser
       O14::ProjectLogger.get_logger.debug 'start instagram actions by account list'
 
       O14::Config.get_config.actions['like_comment']['nicknames'].each do |nickname|
-        O14::ProjectLogger.get_logger.debug "nickname: ##{nickname}"
+        O14::ProjectLogger.get_logger.debug "nickname: @#{nickname}"
         @driver.navigate.to "https://www.instagram.com/#{nickname}/"
         sleep 5
         view_current_stories
