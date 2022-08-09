@@ -3,7 +3,7 @@ web_browser:
   headless: false
   use_profile_directory: true
   use_proxy: false
-  path_to_profile_dir: '/Users/macbook/Library/Application Support/Google/Chrome/parser1'
+  path_to_profile_dir: '/Users/savchenkoya/Library/Application Support/Google/Chrome/parser1'
   proxy_host: '127.0.0.1'
   proxy_port: '8080'
   window_width: 1920
@@ -13,10 +13,15 @@ login_data:
   login: 'instalogin'
   password: 'instapasswrd'
 
-comment_text_parts:
+text_parts:
+  comment_and_answer:
     - "Au top,"
     - " ton contenu| continue "
     - "lourd |c'est fort"
+  request:
+    - "Bonjour, |Hello "
+    - "oui tu peux maintenant démarrer ta promo sur le site|tu peux maintenant démarrer ta promo sur le site le lien est en bio"
+    - "et tu as toutes les infos|tu trouvera toutes les infos"
 
 count_last_posts_process: 20
 sleeping_minutes: 8

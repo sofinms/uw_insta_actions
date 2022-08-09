@@ -25,8 +25,28 @@ module Parser
       actions_by_account_list
       actions_by_followers
       answer_unread_messages
+      answer_requests
 
       O14::WebBrowser.quit_browser
+    end
+
+    def self.answer_requests
+      O14::ProjectLogger.get_logger.debug 'start auto reply requests in direct'
+      @driver.navigate.to 'https://www.instagram.com/direct/requests/'
+      sleep 4
+
+      direct_requests = @driver.find_elements(css: "div._ab8s a[role='link']") rescue []
+      direct_requests.each do |request|
+        request.click
+        sleep 3
+        accept_request_button = @driver.find_element(xpath: "//div[contains(@class, '_ac6v')]//div[text()='Accept']")
+        accept_request_button.click
+        sleep 2
+        select_folder_button = @driver.find_element(xpath: "//div[@role='dialog']//button[text()='Primary']") rescue nil
+        select_folder_button.click unless select_folder_button.nil?
+        sleep 4
+        send_direct_message get_request_message
+      end
     end
 
     def self.answer_unread_messages
@@ -38,7 +58,7 @@ module Parser
       unread_messages.each do |msg|
         msg.click
         sleep 3
-        send_direct_message
+        send_direct_message get_comment_message
       end
     end
 
@@ -137,7 +157,7 @@ module Parser
         comment_input = @driver.find_element(css: 'form._aao9>textarea')
         comment_input.click
         comment_input = @driver.find_element(css: 'form._aao9>textarea')
-        comment_input.send_keys get_comment_message#, :return
+        comment_input.send_keys get_comment_message, :return
         sleep 3
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error when comment was writing'
@@ -156,8 +176,15 @@ module Parser
       end
     end
 
+    def self.get_request_message
+      request_parts = O14::Config.get_config.text_parts['request']
+      request_text = request_parts.map{ |part| part.split('|').sample }.join.strip
+
+      request_text
+    end
+
     def self.get_comment_message
-      comment_parts = O14::Config.get_config.comment_text_parts
+      comment_parts = O14::Config.get_config.text_parts['comment_and_answer']
       comment_text = comment_parts.map{ |part| part.split('|').sample }.join.strip
 
       comment_text
@@ -223,11 +250,11 @@ module Parser
       end
     end
 
-    def self.send_direct_message
+    def self.send_direct_message msg_text
       begin
         message_area = @driver.find_element(css: 'textarea[placeholder=\'Message...\']')
         message_area.click
-        message_area.send_keys get_comment_message, :return
+        message_area.send_keys msg_text, :return
         sleep 3
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error when message in direct trying to send'
