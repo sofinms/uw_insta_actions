@@ -1,90 +1,170 @@
 module Parser
   class Example
-    def self.run
-      while true
-        instagram_actions
+    LIMIT_TIME_ACTIONS = 8*60+59
+    SLEEP_AFTER_SESSIONS = 10*60
+    BETWEEN_SESSIONS_SLEEP = 8*60
 
-        O14::ProjectLogger.get_logger.debug "Sleep #{O14::Config.get_config.sleeping_minutes} minutes"
-        sleep O14::Config.get_config.sleeping_minutes * 60
+    @logger = O14::ProjectLogger.get_logger
+
+    def self.run
+      # @driver = O14::WebBrowser.get_driver
+      # @driver.navigate.to 'https://internet.yandex.ru'
+      #     sleep 400
+      #     exit
+      while true
+        begin
+          instagram_actions
+        rescue => e
+          O14::ExceptionHandler.log_exception e
+        end
+
+        @logger.info 'I sleep 10 min'
+        sleep SLEEP_AFTER_SESSIONS
       end
     end
 
     def self.instagram_actions
+      nickname = O14::DB.get_db[:settings].where(:alias => 'login').first[:value]
+      password = O14::DB.get_db[:settings].where(:alias => 'password').first[:value]
       O14::ProjectLogger.get_logger.debug 'start instagram_actions'
       @driver = O14::WebBrowser.get_driver
 
       @driver.navigate.to 'https://instagram.com'
       sleep 4
       dialog_process
-
-      login if need_login?
+      
+      login(nickname, password) if need_login?
 
       @accs_for_view_stories = []
 
-      actions_by_hashtag
-      actions_by_account_list
-      actions_by_followers
-      answer_unread_messages
-      answer_requests
-      account_linking
+      limit_time_actions() { 
+        actions_by_followers nickname
+      }
+      between_sessions_sleep
+      limit_time_actions() { 
+        answer_unread_messages
+        answer_requests
+      }
+      between_sessions_sleep
+      limit_time_actions() { 
+        account_linking
+      }
+      between_sessions_sleep
+      limit_time_actions() { 
+        actions_by_account_list
+      }
+      O14::WebBrowser.quit_browser      
+    end
 
-      O14::WebBrowser.quit_browser
+    def self.between_sessions_sleep
+      rand_sleep = BETWEEN_SESSIONS_SLEEP + rand(50..59)
+      @logger.info "I sleep #{rand_sleep} sec"
+      sleep(rand_sleep)
+    end
+
+    def self.get_hashtags
+      O14::DB.get_db[:settings].where(:alias => 'hashtag').first[:value].split("\n").map{|_e| _e.strip.gsub('#','')}
+    end
+
+    def self.get_accounts
+      O14::DB.get_db[:settings].where(:alias => 'accounts').first[:value].split("\n").map{|_e| _e.strip}
+    end
+
+    def self.get_linking_accounts
+      O14::DB.get_db[:settings].where(:alias => 'accounts_2').first[:value].split("\n").map{|_e| _e.strip}
+    end
+
+    def self.limit_time_actions &block
+      callback = block
+      begin
+        Timeout.timeout(LIMIT_TIME_ACTIONS) do
+          callback.call
+        end
+      rescue Timeout::Error
+        @logger.info "Timeout = #{LIMIT_TIME_ACTIONS}"
+      end
     end
 
     def self.account_linking
-      O14::ProjectLogger.get_logger.debug 'start actions process for account from first post description'
-      O14::Config.get_config.actions['account_linking'].each do |nickname|
+      O14::ProjectLogger.get_logger.info 'start actions process for account from first post description'
+      get_linking_accounts.shuffle.each do |nickname|
         O14::ProjectLogger.get_logger.debug "Account from which the link will be searched: @#{nickname}"
         @driver.navigate.to "https://www.instagram.com/#{nickname}/"
         sleep 5
-        found_link = get_link_from_first_posts
-        O14::ProjectLogger.get_logger.debug "Found link: #{found_link}"
+        found_links = get_link_from_first_posts
+        found_links.each do |found_link|
+          if found_link
+            @logger.info "Found link: #{found_link}"
+            @driver.navigate.to found_link
+            sleep 5
 
-        @driver.navigate.to found_link
-        sleep 5
-
-        view_current_stories
-        set_likes_comments
+            view_current_stories
+            set_likes_comments
+          else
+            @logger.info "Link not found in the post"
+          end
+        end
       end
     end
 
     def self.get_link_from_first_posts
       posts = @driver.find_elements(css: 'main article div._aabd') rescue []
       O14::ProjectLogger.get_logger.debug "Posts found: #{posts.count}"
-      link_account = nil
+      link_accounts = []
 
-      posts.first(5).each do |post|
+      posts.first(3).each do |post|
         post.click
         sleep 4
         O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
 
-        link_account = @driver.find_element(xpath: "//li[@role='menuitem']//a[contains(text(), '@')]")['href'] rescue nil
-        O14::ProjectLogger.get_logger.debug "link_account: #{link_account}"
-        break unless link_account.nil?
+        link_accounts_elements = @driver.find_elements(xpath: "//li[@role='menuitem']//a[contains(text(), '@')]") rescue []
+        link_accounts_elements.each do |acc_el|
+          link_accounts.push acc_el['href']
+        end
+        O14::ProjectLogger.get_logger.debug "link_accounts count is: #{link_accounts.count}"
+        break unless link_accounts.count > 0
 
         @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
-        sleep 3
+        sleep 2
       end
 
-      link_account
+      link_accounts
     end
 
     def self.answer_requests
       O14::ProjectLogger.get_logger.debug 'start auto reply requests in direct'
-      @driver.navigate.to 'https://www.instagram.com/direct/requests/'
-      sleep 4
-
-      direct_requests = @driver.find_elements(css: "div._ab8s a[role='link']") rescue []
-      direct_requests.each do |request|
-        request.click
-        sleep 3
-        accept_request_button = @driver.find_element(xpath: "//div[contains(@class, '_ac6v')]//div[text()='Accept']")
-        accept_request_button.click
-        sleep 2
-        select_folder_button = @driver.find_element(xpath: "//div[@role='dialog']//button[text()='Primary']") rescue nil
-        select_folder_button.click unless select_folder_button.nil?
+      
+      flag = true
+      while flag
+        @driver.navigate.to 'https://www.instagram.com/direct/requests/'
         sleep 4
-        send_direct_message get_request_message
+        direct_requests = @driver.find_elements(css: "div._ab8s a[role='link']") rescue []
+        if direct_requests.count == 0
+          @logger.debug 'No requests'
+          flag = false
+          next
+        end
+        all_requests_without_accept_button = true
+        direct_requests.each do |request|
+          request.click
+          sleep 3
+          accept_request_button = @driver.find_element(xpath: "//div[contains(@class, '_ac6v')]//div[text()='Accept']") rescue nil
+          if accept_request_button
+            all_requests_without_accept_button = false
+            accept_request_button.click
+            sleep 2
+            select_folder_button = @driver.find_element(xpath: "//div[@role='dialog']//button[text()='Primary']") rescue nil
+            select_folder_button.click unless select_folder_button.nil?
+            sleep 4
+            send_direct_message get_request_message
+            break
+          end
+        end
+        if all_requests_without_accept_button
+          @logger.debug 'all_requests_without_accept_button'
+          flag = false
+          next
+        end
       end
     end
 
@@ -103,8 +183,8 @@ module Parser
 
     def self.actions_by_hashtag
       O14::ProjectLogger.get_logger.debug 'start instagram actions by hashtag'
-
-      O14::Config.get_config.actions['like_comment']['hashtags'].each do |hashtag|
+      
+      get_hashtags.each do |hashtag|
         O14::ProjectLogger.get_logger.debug "hashtag: ##{hashtag}"
         @driver.navigate.to "https://www.instagram.com/explore/tags/#{hashtag}/"
         sleep 5
@@ -116,7 +196,7 @@ module Parser
     def self.actions_by_account_list
       O14::ProjectLogger.get_logger.debug 'start instagram actions by account list'
 
-      O14::Config.get_config.actions['like_comment']['nicknames'].each do |nickname|
+      get_accounts.shuffle.each do |nickname|
         O14::ProjectLogger.get_logger.debug "nickname: @#{nickname}"
         @driver.navigate.to "https://www.instagram.com/#{nickname}/"
         sleep 5
@@ -125,58 +205,65 @@ module Parser
       end
     end
 
-    def self.actions_by_followers
-      @driver.navigate.to "https://www.instagram.com/#{O14::Config.get_config.login_data['login']}/followers/"
+    def self.actions_by_followers nickname
+      @driver.navigate.to "https://www.instagram.com/#{nickname}/followers/"
       sleep 5
 
       scroll_count = 0
       while scroll_count < 4
-        followers_wrapper = @driver.find_element(css: 'div._aano')
-        scroll_origin = Selenium::WebDriver::WheelActions::ScrollOrigin.element(followers_wrapper)
-        @driver.action.scroll_from(scroll_origin, 0, 400).perform
+        @driver.execute_script("document.querySelector('div._aano').scrollTo(0,document.querySelector('div._aano').scrollHeight);")
+        # scroll_origin = Selenium::WebDriver::WheelActions::ScrollOrigin.element(followers_wrapper)
+        # @driver.action.scroll_from(scroll_origin, 0, 400).perform
         scroll_count += 1
         sleep 2
       end
 
       followers = @driver.find_elements(css: "div[role='dialog'] span>a[role='link']").map { |f| f['href'] }
-      O14::ProjectLogger.get_logger.debug "Found #{followers.count} followers. Get 3 random"
+      O14::ProjectLogger.get_logger.debug "Found #{followers.count} followers. Get all"
 
-      followers = followers.sample(3)
-      followers.each do |follower|
+      followers.shuffle.each do |follower|
+        @logger.info "Nav to #{follower}"
         @driver.navigate.to follower
-        sleep 5
+        sleep 4
         view_current_stories
-        set_likes_comments
+        begin
+          set_likes_comments
+        rescue => e
+          O14::ExceptionHandler.log_exception e
+        end
       end
     end
 
     def self.set_likes_comments
       O14::ProjectLogger.get_logger.debug 'set_likes_comments function start'
       posts = @driver.find_elements(css: 'main article div._aabd') rescue []
+      posts = [] if posts.nil?
       O14::ProjectLogger.get_logger.debug "Posts found: #{posts.count}"
+      post_index = rand(0..posts.count-1)
 
-      posts.first(O14::Config.get_config.count_last_posts_process).each do |post|
-        post.click
-        sleep 4
-        O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
+      O14::ProjectLogger.get_logger.debug "Get random post index = #{post_index}"
+      post = posts[post_index]
+      post.click
+      sleep 4
+      O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
 
-        unlike_svg = @driver.find_element(css: 'svg[aria-label="Unlike"]') rescue nil # 'Unlike' exist if only post already liked
-        if unlike_svg.nil?
-          setting_like
-          writing_comment
+      unlike_svg = @driver.find_element(css: 'svg[aria-label="Unlike"]') rescue nil # 'Unlike' exist if only post already liked
+      if unlike_svg.nil?
+        setting_like
+        writing_comment
 
-          # This need only for actions_by_hashtag
-          account_link = @driver.find_element(css: 'article header div[role=\'button\'] a')['href'] rescue nil
-          @accs_for_view_stories.push(account_link) unless account_link.nil?
-          # This need only for actions_by_hashtag
+        # This need only for actions_by_hashtag
+        account_link = @driver.find_element(css: 'article header div[role=\'button\'] a')['href'] rescue nil
+        @accs_for_view_stories.push(account_link) unless account_link.nil?
+        # This need only for actions_by_hashtag
 
-        else
-          O14::ProjectLogger.get_logger.debug 'Post are already liked'
-        end
-
-        @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
-        sleep 3
+      else
+        O14::ProjectLogger.get_logger.debug 'Post are already liked'
       end
+
+      @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
+      sleep 3
+      
     end
 
     def self.view_all_stories
@@ -197,7 +284,7 @@ module Parser
         comment_input.click
         comment_input = @driver.find_element(css: 'form._aao9>textarea')
         comment_input.send_keys get_comment_message, :return
-        sleep 3
+        sleep 5
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error when comment was writing'
         O14::ProjectLogger.get_logger.error e
@@ -229,21 +316,21 @@ module Parser
       comment_text
     end
 
-    def self.login
+    def self.login login, password
       dialog_process
 
       login_input = @driver.find_element(css: 'input[name=\'username\'')
       login_input.click
       sleep 1
 
-      login_input.send_keys O14::Config.get_config.login_data['login']
+      login_input.send_keys login
       sleep 1
 
       password_input = @driver.find_element(css: 'input[name=\'password\'')
       password_input.click
       sleep 1
 
-      password_input.send_keys O14::Config.get_config.login_data['password']
+      password_input.send_keys password
       sleep 1
 
       login_button = @driver.find_element(css: 'button[type=\'submit\'')

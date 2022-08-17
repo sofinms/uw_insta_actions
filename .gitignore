@@ -3,3 +3,5 @@ config/*
 !config/config_sample.yml
 logs/*
 !logs/.gitkeep
+browser_profiles/*
+!browser_profiles/.gitkeep

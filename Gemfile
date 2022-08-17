@@ -9,4 +9,4 @@ gem 'json'
 gem 'logger'
 gem 'selenium-webdriver'
 gem 'thor'
-gem 'webdrivers
+gem 'webdrivers'

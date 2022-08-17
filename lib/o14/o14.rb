@@ -5,4 +5,5 @@ module O14
     autoload :RMQ,                      'o14/rmq'
     autoload :EsClient,                 'o14/es_client'
     autoload :WebBrowser,               'o14/web_browser'
+    autoload :ExceptionHandler,         'o14/exception_handler'
 end
