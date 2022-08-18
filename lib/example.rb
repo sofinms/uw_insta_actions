@@ -1,16 +1,12 @@
 module Parser
   class Example
-    LIMIT_TIME_ACTIONS = 8*60+59
-    SLEEP_AFTER_SESSIONS = 10*60
-    BETWEEN_SESSIONS_SLEEP = 8*60
+    LIMIT_TIME_ACTIONS = 8 * 60 + 59
+    SLEEP_AFTER_SESSIONS = 10 * 60
+    BETWEEN_SESSIONS_SLEEP = 8 * 60
 
     @logger = O14::ProjectLogger.get_logger
 
     def self.run
-      # @driver = O14::WebBrowser.get_driver
-      # @driver.navigate.to 'https://internet.yandex.ru'
-      #     sleep 400
-      #     exit
       while true
         begin
           instagram_actions
@@ -24,35 +20,47 @@ module Parser
     end
 
     def self.instagram_actions
-      nickname = O14::DB.get_db[:settings].where(:alias => 'login').first[:value]
-      password = O14::DB.get_db[:settings].where(:alias => 'password').first[:value]
+      nickname = O14::DB.get_db[:settings].where(alias: 'login').first[:value]
+      password = O14::DB.get_db[:settings].where(alias: 'password').first[:value]
       O14::ProjectLogger.get_logger.debug 'start instagram_actions'
       @driver = O14::WebBrowser.get_driver
 
       @driver.navigate.to 'https://instagram.com'
       sleep 4
       dialog_process
-      
+
       login(nickname, password) if need_login?
 
       @accs_for_view_stories = []
+      limit_time_actions() {
+        actions_by_hashtag
+      }
 
-      limit_time_actions() { 
+      between_sessions_sleep
+
+      limit_time_actions() {
         actions_by_followers nickname
       }
+
       between_sessions_sleep
-      limit_time_actions() { 
+
+      limit_time_actions() {
         answer_unread_messages
         answer_requests
       }
+
       between_sessions_sleep
-      limit_time_actions() { 
+
+      limit_time_actions() {
         account_linking
       }
+
       between_sessions_sleep
-      limit_time_actions() { 
+
+      limit_time_actions() {
         actions_by_account_list
       }
+
       O14::WebBrowser.quit_browser      
     end
 
@@ -63,19 +71,20 @@ module Parser
     end
 
     def self.get_hashtags
-      O14::DB.get_db[:settings].where(:alias => 'hashtag').first[:value].split("\n").map{|_e| _e.strip.gsub('#','')}
+      O14::DB.get_db[:settings].where(alias: 'hashtag').first[:value].split("\n").map{|_e| _e.strip.gsub('#','')}
     end
 
     def self.get_accounts
-      O14::DB.get_db[:settings].where(:alias => 'accounts').first[:value].split("\n").map{|_e| _e.strip}
+      O14::DB.get_db[:settings].where(alias: 'accounts').first[:value].split("\n").map(&:strip)
     end
 
     def self.get_linking_accounts
-      O14::DB.get_db[:settings].where(:alias => 'accounts_2').first[:value].split("\n").map{|_e| _e.strip}
+      O14::DB.get_db[:settings].where(alias: 'accounts_2').first[:value].split("\n").map(&:strip)
     end
 
     def self.limit_time_actions &block
       callback = block
+      @processing_posts_urls = []
       begin
         Timeout.timeout(LIMIT_TIME_ACTIONS) do
           callback.call
@@ -105,6 +114,8 @@ module Parser
           end
         end
       end
+
+      save_latest_commented_post 'account_linking'
     end
 
     def self.get_link_from_first_posts
@@ -191,6 +202,8 @@ module Parser
         set_likes_comments
         view_all_stories
       end
+
+      save_latest_commented_post 'hashtag'
     end
 
     def self.actions_by_account_list
@@ -203,6 +216,8 @@ module Parser
         view_current_stories
         set_likes_comments
       end
+
+      save_latest_commented_post 'account_list'
     end
 
     def self.actions_by_followers nickname
@@ -232,6 +247,8 @@ module Parser
           O14::ExceptionHandler.log_exception e
         end
       end
+
+      save_latest_commented_post 'followers'
     end
 
     def self.set_likes_comments
@@ -285,8 +302,25 @@ module Parser
         comment_input = @driver.find_element(css: 'form._aao9>textarea')
         comment_input.send_keys get_comment_message, :return
         sleep 5
+        @processing_posts_urls.push(@driver.current_url)
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error when comment was writing'
+        O14::ProjectLogger.get_logger.error e
+      end
+    end
+
+    def self.save_latest_commented_post action_type
+      O14::ProjectLogger.get_logger.debug "start save_latest_commented_post function with type #{action_type}"
+      begin
+        db_row = O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{action_type}").first
+        latest_posts = db_row[:value].split("\n") rescue []
+        latest_posts += @processing_posts_urls
+        O14::ProjectLogger.get_logger.debug "Latest posts arr = #{latest_posts}"
+        latest_posts_text = latest_posts.last(20).join("\n")
+
+        O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{action_type}").update(value: latest_posts_text)
+      rescue => e
+        O14::ProjectLogger.get_logger.error 'Error last commented post was saving'
         O14::ProjectLogger.get_logger.error e
       end
     end
