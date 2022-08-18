@@ -84,7 +84,6 @@ module Parser
 
     def self.limit_time_actions &block
       callback = block
-      @processing_posts_urls = []
       begin
         Timeout.timeout(LIMIT_TIME_ACTIONS) do
           callback.call
@@ -95,6 +94,7 @@ module Parser
     end
 
     def self.account_linking
+      @action_type = 'account_linking'
       O14::ProjectLogger.get_logger.info 'start actions process for account from first post description'
       get_linking_accounts.shuffle.each do |nickname|
         O14::ProjectLogger.get_logger.debug "Account from which the link will be searched: @#{nickname}"
@@ -114,8 +114,6 @@ module Parser
           end
         end
       end
-
-      save_latest_commented_post 'account_linking'
     end
 
     def self.get_link_from_first_posts
@@ -193,6 +191,7 @@ module Parser
     end
 
     def self.actions_by_hashtag
+      @action_type = 'hashtag'
       O14::ProjectLogger.get_logger.debug 'start instagram actions by hashtag'
       
       get_hashtags.each do |hashtag|
@@ -202,11 +201,10 @@ module Parser
         set_likes_comments
         view_all_stories
       end
-
-      save_latest_commented_post 'hashtag'
     end
 
     def self.actions_by_account_list
+      @action_type = 'account_list'
       O14::ProjectLogger.get_logger.debug 'start instagram actions by account list'
 
       get_accounts.shuffle.each do |nickname|
@@ -216,11 +214,10 @@ module Parser
         view_current_stories
         set_likes_comments
       end
-
-      save_latest_commented_post 'account_list'
     end
 
     def self.actions_by_followers nickname
+      @action_type = 'followers'
       @driver.navigate.to "https://www.instagram.com/#{nickname}/followers/"
       sleep 5
 
@@ -247,8 +244,6 @@ module Parser
           O14::ExceptionHandler.log_exception e
         end
       end
-
-      save_latest_commented_post 'followers'
     end
 
     def self.set_likes_comments
@@ -302,23 +297,24 @@ module Parser
         comment_input = @driver.find_element(css: 'form._aao9>textarea')
         comment_input.send_keys get_comment_message, :return
         sleep 5
-        @processing_posts_urls.push(@driver.current_url)
+
+        save_latest_commented_post
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error when comment was writing'
         O14::ProjectLogger.get_logger.error e
       end
     end
 
-    def self.save_latest_commented_post action_type
-      O14::ProjectLogger.get_logger.debug "start save_latest_commented_post function with type #{action_type}"
+    def self.save_latest_commented_post
+      O14::ProjectLogger.get_logger.debug "start save_latest_commented_post function with type #{@action_type}"
       begin
-        db_row = O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{action_type}").first
+        db_row = O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{@action_type}").first
         latest_posts = db_row[:value].split("\n") rescue []
-        latest_posts += @processing_posts_urls
+        latest_posts.push(@driver.current_url)
         O14::ProjectLogger.get_logger.debug "Latest posts arr = #{latest_posts}"
         latest_posts_text = latest_posts.last(20).join("\n")
 
-        O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{action_type}").update(value: latest_posts_text)
+        O14::DB.get_db[:bot_stat].where(alias: "latest_posts_by_#{@action_type}").update(value: latest_posts_text)
       rescue => e
         O14::ProjectLogger.get_logger.error 'Error last commented post was saving'
         O14::ProjectLogger.get_logger.error e
