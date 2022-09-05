@@ -1,8 +1,8 @@
 module Parser
   class Example
     LIMIT_TIME_ACTIONS = 8 * 60 + 59
-    SLEEP_AFTER_SESSIONS = 10 * 60
-    BETWEEN_SESSIONS_SLEEP = 8 * 60
+    SLEEP_AFTER_SESSIONS = 60 * 60
+    BETWEEN_SESSIONS_SLEEP = 10 * 60
 
     @logger = O14::ProjectLogger.get_logger
 
@@ -14,7 +14,7 @@ module Parser
           O14::ExceptionHandler.log_exception e
         end
 
-        @logger.info 'I sleep 10 min'
+        @logger.info 'I sleep 30 min'
         sleep SLEEP_AFTER_SESSIONS
       end
     end
@@ -27,6 +27,7 @@ module Parser
 
       @driver.navigate.to 'https://instagram.com'
       sleep 4
+      language_process
       dialog_process
 
       login(nickname, password) if need_login?
@@ -248,34 +249,38 @@ module Parser
 
     def self.set_likes_comments
       O14::ProjectLogger.get_logger.debug 'set_likes_comments function start'
-      posts = @driver.find_elements(css: 'main article div._aabd') rescue []
-      posts = [] if posts.nil?
-      O14::ProjectLogger.get_logger.debug "Posts found: #{posts.count}"
-      post_index = rand(0..posts.count-1)
+      begin
+        posts = @driver.find_elements(css: 'main article div._aabd') rescue []
+        posts = [] if posts.nil?
+        O14::ProjectLogger.get_logger.debug "Posts found: #{posts.count}"
+        post_index = rand(0..posts.count-1)
 
-      O14::ProjectLogger.get_logger.debug "Get random post index = #{post_index}"
-      post = posts[post_index]
-      post.click
-      sleep 4
-      O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
+        O14::ProjectLogger.get_logger.debug "Get random post index = #{post_index}"
+        post = posts[post_index]
+        post.click
+        sleep 4
+        O14::ProjectLogger.get_logger.debug "Current post: #{@driver.current_url}"
 
-      unlike_svg = @driver.find_element(css: 'svg[aria-label="Unlike"]') rescue nil # 'Unlike' exist if only post already liked
-      if unlike_svg.nil?
-        setting_like
-        writing_comment
+        unlike_svg = @driver.find_element(css: 'svg[aria-label="Unlike"]') rescue nil # 'Unlike' exist if only post already liked
+        if unlike_svg.nil?
+          setting_like
+          writing_comment
 
-        # This need only for actions_by_hashtag
-        account_link = @driver.find_element(css: 'article header div[role=\'button\'] a')['href'] rescue nil
-        @accs_for_view_stories.push(account_link) unless account_link.nil?
-        # This need only for actions_by_hashtag
+          # This need only for actions_by_hashtag
+          account_link = @driver.find_element(css: 'article header div[role=\'button\'] a')['href'] rescue nil
+          @accs_for_view_stories.push(account_link) unless account_link.nil?
+          # This need only for actions_by_hashtag
 
-      else
-        O14::ProjectLogger.get_logger.debug 'Post are already liked'
+        else
+          O14::ProjectLogger.get_logger.debug 'Post are already liked'
+        end
+
+        @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
+        sleep 3
+      rescue => e
+        O14::ProjectLogger.get_logger.error 'Error when like was setting'
+        O14::ProjectLogger.get_logger.error e
       end
-
-      @driver.find_element(css: 'svg[aria-label=\'Close\']')&.click
-      sleep 3
-      
     end
 
     def self.view_all_stories
@@ -334,14 +339,14 @@ module Parser
 
     def self.get_request_message
       request_parts = O14::Config.get_config.text_parts['request']
-      request_text = request_parts.map{ |part| part.split('|').sample }.join.strip
+      request_text = request_parts.map{ |part| part.split('|').sample }.join("\s").strip
 
       request_text
     end
 
     def self.get_comment_message
       comment_parts = O14::Config.get_config.text_parts['comment_and_answer']
-      comment_text = comment_parts.map{ |part| part.split('|').sample }.join.strip
+      comment_text = comment_parts.map{ |part| part.split('|').sample }.join("\s").strip
 
       comment_text
     end
@@ -372,6 +377,15 @@ module Parser
       login_form_exist = @driver.find_element(css: 'form#loginForm') rescue nil
 
       !login_form_exist.nil?
+    end
+
+    def self.language_process
+      lang_select = @driver.find_element(css: 'select._aajm')
+      lang_select.click
+      sleep 3
+
+      lang_select.find_element(css: 'option[value=\'en\']').click
+      sleep 3
     end
 
     def self.dialog_process
